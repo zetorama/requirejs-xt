@@ -1,20 +1,22 @@
 /**
  * RequireJS X-Template Loader
+ * Where X stands for Any
+ *
  * Implements:
- *   - multiple templates per file
+ *   - multiple templates/partials per file
  *   - templates extend
- *   - auto-loading for dependencies (templates/stylesheets)
- * https://github.com/zetorama/requirejs-xt
+ *   - auto-loading for dependencies (templates/stylesheets/anything else)
  *
  * Dependencies:
- * RequireJS text plugin: https://github.com/requirejs/text
- * jQuery compatible promises, like: https://github.com/sudhirj/simply-deferred
+ *   - RequireJS (what a surprise): http://requirejs.org/
+ *   - RequireJS text plugin: https://github.com/requirejs/text
+ *   - jQuery compatible promises, like: https://github.com/sudhirj/simply-deferred
  *
- * TODO:
- *   - Remove jquery dependency
+ * Details:
+ *   - https://github.com/zetorama/requirejs-xt
  */
 
-define(['require', 'module', 'text', 'deferred', 'jquery'], function (require, module, text, dfr, $) {
+define(['require', 'module', 'text', 'deferred'], function (require, module, text, dfr) {
   'use strict';
 
   var VERSION = '0.1.0',
@@ -143,8 +145,7 @@ define(['require', 'module', 'text', 'deferred', 'jquery'], function (require, m
           extendFrom: false
         },
         magicPosition = content.indexOf('<x-template'),
-        parts, occurs, k, part, alias,
-        $template;
+        parts, occurs, k, part, alias;
 
       if (magicPosition === -1) {
         // assume it as a simple template file
@@ -205,61 +206,13 @@ define(['require', 'module', 'text', 'deferred', 'jquery'], function (require, m
       }
 
       return data;
-
-      // TODO: rewrite w/o jQuery
-      $template = $(content);
-      $template
-        // 1. Find dependencies
-        .filter('x-require').each(function() {
-          var $dep = $(this),
-            path = $dep.attr('path'),
-            alias = $dep.attr('alias'),
-            module = $dep.attr('module') || plugin.moduleId;
-
-          if (module === plugin.moduleId) {
-            // re-use foreign partials
-            data.incAliases.push(alias || path);
-            data.incDeps.push(path);
-          } else {
-            data.reqAliases.push(alias || path);
-            if (module === 'require') {
-              // assume it as a default AMD-module
-              data.reqDeps.push(path);
-            } else {
-              // prepend module name, useful for css files
-              data.reqDeps.push([module, path].join('!'));
-            }
-          }
-        }).end()
-        // 2. Is it inherited?
-        .filter('x-extend:eq(0)').each(function() {
-          var $ext = $(this),
-            path = $ext.attr('path'),
-            alias = $ext.attr('alias') || plugin.superAliasDefault;
-
-          if (path) {
-            data.extendFrom = alias;
-            data.incAliases.push(alias);
-            data.incDeps.push(path);
-          }
-        }).end()
-        // 3. Get all partials
-        .filter('x-template').each(function() {
-          var $partial = $(this),
-            name = $partial.attr('name') || plugin.templateNameDefault;
-
-          data.partials[name] = trim.call($partial.html());
-        });
-
-      return data;
     },
 
     getContent: function(template, name, context) {
       var plugin = this,
         content,
         occurs, k, l, part,
-        source, incContext, replace,
-        $template;
+        source, incContext, replace;
 
       if (!template.partials[name]) {
         throw 'Template "' + name + '" is not defined in file ' + template.url;
@@ -310,57 +263,6 @@ define(['require', 'module', 'text', 'deferred', 'jquery'], function (require, m
       }
 
       return content;
-
-
-      $template = $('<div/>').html(template.partials[name]);
-
-      // Inject includes
-      $template.find('x-include').each(function() {
-        var $inc = $(this),
-          alias = $inc.attr('from'),
-          partial = $inc.attr('name'),
-          params = $inc.attr('params'),
-          source, incContext, replace;
-
-          if (!partial) {
-            throw 'Undefined name for x-include (template "' + name + '") in file ' + template.url;
-          }
-
-          if (alias) {
-            if (!context.includes[alias]) {
-              throw 'Undefined filename "' + alias + '" ' +
-              'is used for x-include (template "' + name + '") in file ' + template.url;
-            }
-
-            source = context.includes[alias];
-            incContext = (template.inherits || {}).alias === alias ? context : source;
-          } else {
-            source = template;
-            incContext = context;
-          }
-
-          if (!source.partials[partial]) {
-            throw 'Undefined template "' + partial + '" ' +
-              (alias ? '(from "' + alias + '") ' : '') +
-              'is used for x-include (template "' + name + '") in file ' + template.url;
-          }
-
-          replace = plugin.include(source.partials[partial], {
-            template: source,
-            alias: alias,
-            name: partial,
-            to: {
-              template: template,
-              name: name
-            },
-            context: incContext,
-            params: params
-          });
-
-          $inc.replaceWith(replace);
-      });
-
-      return $template.html();
     },
 
     result: function(template, options) {
@@ -382,9 +284,6 @@ define(['require', 'module', 'text', 'deferred', 'jquery'], function (require, m
         dfr = new Deferred(),
         remain = urls.length,
         onError = function onFetchError(err) {
-          console.warn('Fetching files error: ' + err);
-          console.info('-> ' + urls.join('\n-> '));
-
           var k, url;
           for (k = urls.length; k--;) {
             url = urls[k];
@@ -457,8 +356,6 @@ define(['require', 'module', 'text', 'deferred', 'jquery'], function (require, m
         depLoaded = !data.reqDeps.length,
         incLoaded = !data.incDeps.length,
         onError = function onProcessError(err) {
-          console.warn('Processing file error: ' + err);
-          console.info('-> ' + url);
           dfr.reject(err);
         },
         checkDone = function checkProcessDone() {
@@ -611,8 +508,6 @@ define(['require', 'module', 'text', 'deferred', 'jquery'], function (require, m
           try {
             result = plugin.result(template, file);
           } catch (ex) {
-            console.warn('Resulting template error: ' + ex);
-            console.info('-> ' + file.url);
             onLoad.error(ex);
           } finally {
             result && onLoad(result);
