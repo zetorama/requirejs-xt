@@ -1,10 +1,10 @@
 # RequireJS X-Template Loader
-
 > Where X stands for Any
 
 ## Implements
 - multiple templates/partials per file
 - templates extend
+- templates wrappers
 - auto-loading for dependencies *(templates/stylesheets/anything else)*
 
 ## Dependencies

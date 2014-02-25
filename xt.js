@@ -5,6 +5,7 @@
  * Implements:
  *   - multiple templates/partials per file
  *   - templates extend
+ *   - templates wrappers
  *   - auto-loading for dependencies (templates/stylesheets/anything else)
  *
  * Dependencies:
@@ -19,7 +20,7 @@
 define(['require', 'module', 'text', 'deferred'], function (require, module, text, dfr) {
   'use strict';
 
-  var VERSION = '0.1.0',
+  var VERSION = '0.2.0',
     loading = {},
     loaded = {},
     extend = function(obj, ext) {
@@ -47,9 +48,11 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     Deferred = dfr.Deferred || dfr,
     rx = {
       template: /<x-template\s*(.*?)>((?:.|\s)*?)<\/x-template>/g,
+      wrapper: /<x-wrapper\s*(.*?)>((?:.|\s)*?)<\/x-wrapper>/g,
       require: /<x-require\s+(.*?)>/g,
       extend: /<x-extend\s+(.*?)>/g,
       include: /<x-include\s+(.*?)>/g,
+      content: /<x-content>/g,
       quotes: /^['"]|['"]$/g,
       spaces: /\s+/
     },
@@ -138,6 +141,8 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       var plugin = this,
         data = {
           partials: {},
+          wrappers: {},
+          wrapMap: {},
           incDeps: [],
           incAliases: [],
           reqDeps: [],
@@ -166,7 +171,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       occurs = findOccurrences(rx.require, parts.req);
       for (k = occurs.length; k--;) {
         part = occurs[k].options;
-        alias = part.alias || part.path
+        alias = part.alias || part.path;
 
         if (!part.module || part.module === plugin.moduleId) {
             // re-use foreign partials
@@ -203,6 +208,18 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         part = occurs[k];
         alias = part.options.name || plugin.templateNameDefault;
         data.partials[alias] = trim.call(part.content);
+
+        if (part.options.wrapper) {
+          data.wrapMap[alias] = part.options.wrapper;
+        }
+      }
+
+      // 4. Find wrappers
+      occurs = findOccurrences(rx.wrapper, parts.tpl);
+      for (k = occurs.length; k--;) {
+        part = occurs[k];
+        alias = part.options.name || plugin.templateNameDefault;
+        data.wrappers[alias] = trim.call(part.content);
       }
 
       return data;
@@ -211,6 +228,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     getContent: function(template, name, context) {
       var plugin = this,
         content,
+        wrapper, wrapName,
         occurs, k, l, part,
         source, incContext, replace;
 
@@ -220,7 +238,19 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
       context || (context = template);
       content = template.partials[name];
+      wrapName = template.wrapMap[name];
 
+      // Check wrapper
+      if (wrapName) {
+        wrapper = template.wrappers[wrapName];
+        if (!wrapper) {
+          throw 'Template "' + name + '" uses unknown wrapper "' + wrapName + '" in file ' + template.url;
+        }
+
+        content = wrapper.replace(rx.content, content);
+      }
+
+      // Find includes
       occurs = findOccurrences(rx.include, content);
       for (k = 0, l = occurs.length; k < l; k++) {
         part = occurs[k].options;
@@ -438,6 +468,8 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
           compiled: {},
           partials: {},
           includes: {},
+          wrappers: {},
+          wrapMap: data.wrapMap,
           inherits: false
         },
         parent = data.extendFrom && data.incMap[data.extendFrom],
@@ -447,6 +479,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         // Extend
         template.partials = linkPrototype(parent.partials);
         template.includes = linkPrototype(parent.includes);
+        template.wrappers = linkPrototype(parent.wrappers);
 
         template.inherits = {
           alias: data.extendFrom,
@@ -457,6 +490,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       // Mix parts
       extend(template.partials, data.partials);
       extend(template.includes, data.incMap);
+      extend(template.wrappers, data.wrappers);
 
       // Compile
       for (name in template.partials) {
