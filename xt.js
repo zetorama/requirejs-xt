@@ -164,6 +164,8 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
       parent.pop();
       parent = parent.join('/');
 
+      console.warn('resolveRelativePath', parentFile, path);
+
       if (dirs[0] === '.') {
         // The same dir
         dirs.shift();
@@ -260,11 +262,12 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
       var plugin = this,
         dfr = new Deferred(),
         remain = urls.length,
-        ids = urls.slice(),
+        ids = {},
         onError = function onFetchError(err) {
-          var k, id;
-          for (k = ids.length; k--;) {
-            id = ids[k];
+          var k, url, id;
+          for (k = urls.length; k--;) {
+            url = urls[k];
+            id = ids[url];
             if (loading[id]) {
               loading[id].reject(err);
               delete loading[id];
@@ -275,19 +278,23 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
         },
         checkDone = function checkFetchDone() {
           var files = [],
-            k, l, id;
+            k, l, url, id;
 
           if (!--remain) {
-            for (k = 0, l = ids.length; k < l; k++) {
-              id = ids[k];
+            for (k = 0, l = urls.length; k < l; k++) {
+              url = urls[k];
+              id = ids[url];
               files.push(loaded[id]);
             }
 
             dfr.resolveWith(null, files);
           }
         },
-        onLoad = function(id, content) {
-          var data = plugin.parseContent(content, id, req, config);
+        onLoad = function(url, content) {
+          var id = ids[url],
+            data = plugin.parseContent(content, url, req, config);
+
+          data.id = id;
 
           plugin.process(data, req, config)
             .done(function(template) {
@@ -300,9 +307,9 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
             })
             .fail(onError);
         },
-        getOnLoad = function(id) {
+        getOnLoad = function(url) {
           var closure = function(content) {
-            onLoad(id, content);
+            onLoad(url, content);
           };
 
           closure.error = onError;
@@ -313,17 +320,17 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
       for (k = remain; k--;) {
         url = urls[k];
         id = req.toUrl(url);
-        ids[k] = id;
+        ids[url] = id;
 
         if (loaded[id]) {
-          checkDone(id);
+          checkDone();
         } else if (loading[id]) {
           loading[id]
             .done(checkDone)
             .fail(onError);
         } else {
           loading[id] = new Deferred();
-          text.load(url, req, getOnLoad(id), config);
+          text.load(url, req, getOnLoad(url), config);
         }
       }
 
@@ -333,7 +340,7 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
     parseContent: function(content, url, req, config) {
       var plugin = this,
         data = {
-          id: req.toUrl(url),
+          url: url,
           partials: {},
           wrappers: {},
           wrapMap: {},
