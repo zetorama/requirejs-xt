@@ -112,18 +112,12 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
     },
 
     compile: function(text, name, template) {
-      var plugin = this,
-        compiled = text;
-      compiled.partial = function(partialName) {
-        return plugin.get()
-      };
-
       return text;
     },
 
-    get: function(url, partialName) {
+    get: function(id, partialName) {
       var plugin = this,
-        template = loaded[url],
+        template = loaded[id],
         result;
 
       if (!template) {
