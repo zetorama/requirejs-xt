@@ -164,8 +164,6 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
       parent.pop();
       parent = parent.join('/');
 
-      console.warn('resolveRelativePath', parentFile, path);
-
       if (dirs[0] === '.') {
         // The same dir
         dirs.shift();
@@ -459,7 +457,7 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
         incUrls = [],
         k, l, depName;
 
-      console.log('process template "%s": %o', data.id, data);
+      // console.log('process template "%s": %o', data.id, data);
 
       if (depLoaded && incLoaded) {
         checkDone();
