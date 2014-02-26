@@ -17,10 +17,10 @@
  *   - https://github.com/zetorama/requirejs-xt
  */
 
-define(['require', 'module', 'text', 'deferred'], function (require, module, text, dfr) {
+define(['module', 'text', 'deferred'], function (module, text, dfr) {
   'use strict';
 
-  var VERSION = '0.2.0',
+  var VERSION = '0.2.2',
     loading = {},
     loaded = {},
     extend = function(obj, ext) {
@@ -46,7 +46,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       };
     })(),
     Deferred = dfr.Deferred || dfr,
-    rx = {
+    rxMap = {
       template: /<x-template\s*(.*?)>((?:.|\s)*?)<\/x-template>/g,
       wrapper: /<x-wrapper\s*(.*?)>((?:.|\s)*?)<\/x-wrapper>/g,
       require: /<x-require\s+(.*?)>/g,
@@ -74,7 +74,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
     parseAttributes = function(str) {
       var result = {},
-        attrs = str.split(rx.spaces),
+        attrs = str.split(rxMap.spaces),
         k, attr, parts, key, val;
 
       for (k = attrs.length; k--;) {
@@ -82,7 +82,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
         parts = attr.split('=');
         key = parts.shift();
-        val = parts.join('=').replace(rx.quotes, '');
+        val = parts.join('=').replace(rxMap.quotes, '');
 
         result[key] = trim.call(val);
       }
@@ -100,7 +100,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     superAliasDefault: 'super',
 
     extend: function(obj) {
-      return extend(linkPrototype(plugin), obj);
+      return extend(linkPrototype(this), obj);
     },
 
     register: function(template, required) {
@@ -112,22 +112,42 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     },
 
     compile: function(text, name, template) {
+      var plugin = this,
+        compiled = text;
+      compiled.partial = function(partialName) {
+        return plugin.get()
+      };
+
       return text;
     },
 
-    get: function(url) {
-      return loaded[url];
+    get: function(url, partialName) {
+      var plugin = this,
+        template = loaded[url],
+        result;
+
+      if (!template) {
+        throw 'Requested template file was not loaded: ' + template.id;
+      }
+
+      partialName || (partialName = plugin.templateNameDefault);
+      result = template.compiled[partialName];
+
+      if (!result) {
+        throw 'Requested template "' + partialName + '" is not defined in file ' + template.id;
+      }
+
+      return result;
     },
 
-    parseName: function(name, req) {
-      var parts = String(name).split('!', 2),
-        path = this.addExtension(parts[0]),
-        options = parts[1] || '';
+    parseName: function(name) {
+      var parts = String(name).split(':', 2),
+        file = this.addExtension(parts[0]),
+        partialName = parts[1] || '';
 
       return {
-        path: path,
-        url: req.toUrl(path),
-        partial: options
+        file: file,
+        partial: partialName
       };
     },
 
@@ -137,92 +157,26 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       return hasExtension ? path : [path, this.extension].join('.');
     },
 
-    parseContent: function(content) {
-      var plugin = this,
-        data = {
-          partials: {},
-          wrappers: {},
-          wrapMap: {},
-          incDeps: [],
-          incAliases: [],
-          reqDeps: [],
-          reqAliases: [],
-          extendFrom: false
-        },
-        magicPosition = content.indexOf('<x-template'),
-        parts, occurs, k, part, alias;
+    resolveRelativePath: function(path, parentFile, config) {
+      // TODO: use some requirejs API when available
+      var parent = parentFile.split('/'),
+        dirs = path.split('/');
+      parent.pop();
+      parent = parent.join('/');
 
-      if (magicPosition === -1) {
-        // assume it as a simple template file
-        data.partials[plugin.templateNameDefault] = content;
-        return data;
+      if (dirs[0] === '.') {
+        // The same dir
+        dirs.shift();
+        return [parent, dirs.join('/')].join('/');
+      } else if (dirs[0] === '..') {
+        // Parent dir should be normalized later
+        return [parent, dirs.join('/')].join('/');
       }
 
-      // Parse content to find each template
-      // Using reg-exes is pretty fast, but has some restrictions.
-      // Split content in two parts to speed up,
-      // So requires and extend are allowed only before templates
-      parts = {
-        req: content.slice(0, magicPosition),
-        tpl: content.slice(magicPosition)
-      };
+      // NOTE: currently only relative paths are supported
+      // Everything else should be supported VIA requirejs' paths
 
-      // 1. Find dependencies
-      occurs = findOccurrences(rx.require, parts.req);
-      for (k = occurs.length; k--;) {
-        part = occurs[k].options;
-        alias = part.alias || part.path;
-
-        if (!part.module || part.module === plugin.moduleId) {
-            // re-use foreign partials
-            data.incAliases.push(alias);
-            data.incDeps.push(part.path);
-          } else {
-            data.reqAliases.push(alias);
-            if (part.module === 'require') {
-              // assume it as a default AMD-module
-              data.reqDeps.push(part.path);
-            } else {
-              // prepend module name, useful for css files
-              data.reqDeps.push([part.module, part.path].join('!'));
-            }
-          }
-      }
-
-      // 2. Is it inherited?
-      occurs = findOccurrences(rx.extend, parts.req);
-      if (occurs.length) {
-        // Only one is allowed
-        part = occurs[0].options;
-        if (part.path) {
-          alias = part.alias || plugin.superAliasDefault;
-          data.extendFrom = alias;
-          data.incAliases.push(alias);
-          data.incDeps.push(part.path);
-        }
-      }
-
-      // 3. Get all partials
-      occurs = findOccurrences(rx.template, parts.tpl);
-      for (k = occurs.length; k--;) {
-        part = occurs[k];
-        alias = part.options.name || plugin.templateNameDefault;
-        data.partials[alias] = trim.call(part.content);
-
-        if (part.options.wrapper) {
-          data.wrapMap[alias] = part.options.wrapper;
-        }
-      }
-
-      // 4. Find wrappers
-      occurs = findOccurrences(rx.wrapper, parts.tpl);
-      for (k = occurs.length; k--;) {
-        part = occurs[k];
-        alias = part.options.name || plugin.templateNameDefault;
-        data.wrappers[alias] = trim.call(part.content);
-      }
-
-      return data;
+      return path;
     },
 
     getContent: function(template, name, context) {
@@ -233,7 +187,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         source, incContext, replace;
 
       if (!template.partials[name]) {
-        throw 'Template "' + name + '" is not defined in file ' + template.url;
+        throw 'Template "' + name + '" is not defined in file ' + template.id;
       }
 
       context || (context = template);
@@ -244,24 +198,24 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       if (wrapName) {
         wrapper = template.wrappers[wrapName];
         if (!wrapper) {
-          throw 'Template "' + name + '" uses unknown wrapper "' + wrapName + '" in file ' + template.url;
+          throw 'Template "' + name + '" uses unknown wrapper "' + wrapName + '" in file ' + template.id;
         }
 
-        content = wrapper.replace(rx.content, content);
+        content = wrapper.replace(rxMap.content, content);
       }
 
       // Find includes
-      occurs = findOccurrences(rx.include, content);
+      occurs = findOccurrences(rxMap.include, content);
       for (k = 0, l = occurs.length; k < l; k++) {
         part = occurs[k].options;
         if (!part.name) {
-          throw 'Undefined name for x-include (template "' + name + '") in file ' + template.url;
+          throw 'Undefined name for x-include (template "' + name + '") in file ' + template.id;
         }
 
         if (part.from) {
           if (!context.includes[part.from]) {
             throw 'Undefined filename "' + part.from + '" ' +
-            'is used for x-include (template "' + name + '") in file ' + template.url;
+            'is used for x-include (template "' + name + '") in file ' + template.id;
           }
 
           source = context.includes[part.from];
@@ -274,7 +228,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         if (!source.partials[part.name]) {
           throw 'Undefined template "' + part.name + '" ' +
             (part.from ? '(from "' + part.from + '") ' : '') +
-            'is used for x-include (template "' + name + '") in file ' + template.url;
+            'is used for x-include (template "' + name + '") in file ' + template.id;
         }
 
         replace = plugin.include(source.partials[part.name], {
@@ -297,91 +251,182 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
     result: function(template, options) {
       var plugin = this,
-        partial;
-      options || (options = {});
+        partialName = (options || {}).partial || plugin.templateNameDefault;
 
-      partial = options.partial || plugin.templateNameDefault;
-
-      if (!template.compiled[partial]) {
-        throw 'Requested template "' + partial + '" is not defined in file ' + template.url;
-      }
-
-      return template.compiled[partial];
+      return plugin.get(template.id, partialName);
     },
 
     fetchFiles: function(urls, req, config) {
       var plugin = this,
         dfr = new Deferred(),
         remain = urls.length,
+        ids = urls.slice(),
         onError = function onFetchError(err) {
-          var k, url;
-          for (k = urls.length; k--;) {
-            url = urls[k];
-            if (loading[url]) {
-              loading[url].reject(err);
-              delete loading[url];
+          var k, id;
+          for (k = ids.length; k--;) {
+            id = ids[k];
+            if (loading[id]) {
+              loading[id].reject(err);
+              delete loading[id];
             }
           };
 
           dfr.reject(err);
         },
-        checkDone = function checkFetchDone(url) {
+        checkDone = function checkFetchDone() {
           var files = [],
-            k, l, url;
+            k, l, id;
 
           if (!--remain) {
-            for (k = 0, l = urls.length; k < l; k++) {
-              url = urls[k];
-              files.push(loaded[url]);
+            for (k = 0, l = ids.length; k < l; k++) {
+              id = ids[k];
+              files.push(loaded[id]);
             }
 
             dfr.resolveWith(null, files);
           }
         },
-        onLoad = function(url, content) {
-          plugin.process(content, url, req, config)
+        onLoad = function(id, content) {
+          var data = plugin.parseContent(content, id, req, config);
+
+          plugin.process(data, req, config)
             .done(function(template) {
-              loaded[url] = template;
+              loaded[id] = template;
 
-              loading[url].resolve(template);
-              delete loading[url];
+              loading[id].resolve(template);
+              delete loading[id];
 
-              checkDone(url);
+              checkDone(id);
             })
             .fail(onError);
         },
-        getOnLoad = function(url) {
+        getOnLoad = function(id) {
           var closure = function(content) {
-            onLoad(url, content);
+            onLoad(id, content);
           };
 
           closure.error = onError;
           return closure;
         },
-        url, k;
+        url, id, k;
 
       for (k = remain; k--;) {
         url = urls[k];
+        id = req.toUrl(url);
+        ids[k] = id;
 
-        if (loaded[url]) {
-          checkDone(url);
-        } else if (loading[url]) {
-          loading[url]
+        if (loaded[id]) {
+          checkDone(id);
+        } else if (loading[id]) {
+          loading[id]
             .done(checkDone)
             .fail(onError);
         } else {
-          loading[url] = new Deferred();
-          text.load(url, req, getOnLoad(url), config);
+          loading[id] = new Deferred();
+          text.load(url, req, getOnLoad(id), config);
         }
       }
 
       return dfr.promise();
     },
 
-    process: function(content, url, req, config) {
+    parseContent: function(content, url, req, config) {
+      var plugin = this,
+        data = {
+          id: req.toUrl(url),
+          partials: {},
+          wrappers: {},
+          wrapMap: {},
+          incDeps: [],
+          incAliases: [],
+          reqDeps: [],
+          reqAliases: [],
+          extendFrom: false
+        },
+        magicPosition = content.indexOf('<x-template'),
+        parts, occurs, k, part, alias, path;
+
+      if (magicPosition === -1) {
+        // assume it as a simple template file
+        data.partials[plugin.templateNameDefault] = content;
+        return data;
+      }
+
+      // Parse content to find each template
+      // Using reg-exes is pretty fast, but has some restrictions.
+      // Split content in two parts to speed up,
+      // So requires and extend are allowed only before templates
+      parts = {
+        req: content.slice(0, magicPosition),
+        tpl: content.slice(magicPosition)
+      };
+
+      // 1. Find dependencies
+      occurs = findOccurrences(rxMap.require, parts.req);
+      for (k = occurs.length; k--;) {
+        part = occurs[k].options;
+        alias = part.alias || part.path;
+
+        if (!part.module || part.module === plugin.moduleId) {
+            // re-use foreign partials
+            data.incAliases.push(alias);
+            path = plugin.resolveRelativePath(part.path, url, config);
+            path = plugin.addExtension(path);
+            data.incDeps.push(path);
+          } else {
+            data.reqAliases.push(alias);
+            path = plugin.resolveRelativePath(part.path, url, config);
+            if (part.module === 'require') {
+              // assume it as a default AMD-module
+              data.reqDeps.push(path);
+            } else {
+              // prepend module name, useful for css files
+              data.reqDeps.push([part.module, path].join('!'));
+            }
+          }
+      }
+
+      // 2. Is it inherited?
+      occurs = findOccurrences(rxMap.extend, parts.req);
+      if (occurs.length) {
+        // Only one is allowed
+        part = occurs[0].options;
+        if (part.path) {
+          alias = part.alias || plugin.superAliasDefault;
+          data.extendFrom = alias;
+          data.incAliases.push(alias);
+          path = plugin.resolveRelativePath(part.path, url, config);
+          path = plugin.addExtension(path);
+          data.incDeps.push(path);
+        }
+      }
+
+      // 3. Get all partials
+      occurs = findOccurrences(rxMap.template, parts.tpl);
+      for (k = occurs.length; k--;) {
+        part = occurs[k];
+        alias = part.options.name || plugin.templateNameDefault;
+        data.partials[alias] = trim.call(part.content);
+
+        if (part.options.wrapper) {
+          data.wrapMap[alias] = part.options.wrapper;
+        }
+      }
+
+      // 4. Find wrappers
+      occurs = findOccurrences(rxMap.wrapper, parts.tpl);
+      for (k = occurs.length; k--;) {
+        part = occurs[k];
+        alias = part.options.name || plugin.templateNameDefault;
+        data.wrappers[alias] = trim.call(part.content);
+      }
+
+      return data;
+    },
+
+    process: function(data, req, config) {
       var plugin = this,
         dfr = new Deferred(),
-        data = plugin.parseContent(content),
 
         depLoaded = !data.reqDeps.length,
         incLoaded = !data.incDeps.length,
@@ -407,7 +452,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         incUrls = [],
         k, l, depName;
 
-      data.url = url;
+      console.log('process template "%s": %o', data.id, data);
 
       if (depLoaded && incLoaded) {
         checkDone();
@@ -433,11 +478,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
       if (!incLoaded) {
         // Load required templates internally
-        for (k = 0, l = data.incDeps.length; k < l; k++) {
-          depName = data.incDeps[k];
-          incUrls.push(plugin.parseName(depName, req).url);
-        }
-        plugin.fetchFiles(incUrls, req, config)
+        plugin.fetchFiles(data.incDeps, req, config)
           .done(function() {
             var k, alias;
             // All templates are passed as arguments
@@ -464,7 +505,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     finalize: function(data) {
       var plugin = this,
         template = {
-          url: data.url,
+          id: data.id,
           compiled: {},
           partials: {},
           includes: {},
@@ -534,13 +575,13 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
     load: function(name, req, onLoad, config) {
       var plugin = this,
-        file = plugin.parseName(name, req),
+        resource = plugin.parseName(name),
         result;
 
-      plugin.fetchFiles([file.url], req, config)
+      plugin.fetchFiles([resource.file], req, config)
         .done(function(template) {
           try {
-            result = plugin.result(template, file);
+            result = plugin.result(template, resource);
           } catch (ex) {
             onLoad.error(ex);
           } finally {
