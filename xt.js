@@ -20,19 +20,24 @@
 define(['require', 'module', 'text', 'deferred'], function (require, module, text, dfr) {
   'use strict';
 
-  var VERSION = '0.2.3',
+  var VERSION = '0.2.4',
+    moduleId = module.id,
+    config = module.config() || {},
     loading = {},
     loaded = {},
-    buildMap = {},
-    extend = function(obj, ext) {
-      var prop;
-      for (prop in ext) {
-        obj[prop] = ext[prop];
-      }
 
-      return obj;
+    Deferred = dfr.Deferred || dfr,
+    rxMap = {
+      template: /<x-template\s*(.*?)>((?:.|\s)*?)<\/x-template>/g,
+      wrapper: /<x-wrapper\s*(.*?)>((?:.|\s)*?)<\/x-wrapper>/g,
+      require: /<x-require\s+(.*?)>/g,
+      extend: /<x-extend\s+(.*?)>/g,
+      include: /<x-include\s+(.*?)>/g,
+      content: /<x-content>/g,
+      quotes: /^['"]|['"]$/g,
+      spaces: /\s+/
     },
-    trim = String.prototype.trim || function() {
+    trim = String.prototype.trim || function trim() {
       // regExp from jQuery
       trim.rx || (trim.rx = /^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g);
 
@@ -46,16 +51,14 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         return new F();
       };
     })(),
-    Deferred = dfr.Deferred || dfr,
-    rxMap = {
-      template: /<x-template\s*(.*?)>((?:.|\s)*?)<\/x-template>/g,
-      wrapper: /<x-wrapper\s*(.*?)>((?:.|\s)*?)<\/x-wrapper>/g,
-      require: /<x-require\s+(.*?)>/g,
-      extend: /<x-extend\s+(.*?)>/g,
-      include: /<x-include\s+(.*?)>/g,
-      content: /<x-content>/g,
-      quotes: /^['"]|['"]$/g,
-      spaces: /\s+/
+
+    extend = function(obj, ext) {
+      var prop;
+      for (prop in ext) {
+        obj[prop] = ext[prop];
+      }
+
+      return obj;
     },
 
     findOccurrences = function(rx, text) {
@@ -95,11 +98,12 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
   plugin = {
     version: VERSION,
 
-    moduleId: module.id,
     isBuild: false,
-    extension: 'html',
-    templateNameDefault: 'main',
-    superAliasDefault: 'super',
+
+    moduleId: moduleId,
+    extension: config.extension || 'html',
+    defaultPartialName: config.defaultPartialName || 'main',
+    defaultParentAlias: config.defaultParentAlias || 'super',
 
     extend: function(obj) {
       return extend(linkPrototype(this), obj);
@@ -126,7 +130,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         throw 'Requested template file was not loaded: ' + template.id;
       }
 
-      partialName || (partialName = plugin.templateNameDefault);
+      partialName || (partialName = plugin.defaultPartialName);
       result = template.compiled[partialName];
 
       if (!result) {
@@ -137,18 +141,22 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     },
 
     parseName: function(name) {
-      var parts = String(name).split(':', 2),
-        file = this.addExtension(parts[0]),
+      var plugin = this,
+        parts = String(name).split(':', 2),
+        name = parts[0],
+        file = plugin.addExtension(name),
         partialName = parts[1] || '';
 
       return {
+        name: name,
         file: file,
         partial: partialName
       };
     },
 
     addExtension: function(path) {
-      var hasExtension = path.lastIndexOf('.') > path.lastIndexOf('/');
+      var plugin = this,
+        hasExtension = path.lastIndexOf('.') > path.lastIndexOf('/');
 
       return hasExtension ? path : [path, this.extension].join('.');
     },
@@ -170,9 +178,13 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       }
 
       // NOTE: currently only relative paths are supported
-      // Everything else should be supported VIA requirejs' paths
+      // Everything else should be supported VIA requirejs' paths config
 
       return path;
+    },
+
+    makeId: function(url, req, config) {
+      return req.toUrl(url);
     },
 
     getContent: function(template, name, context) {
@@ -247,7 +259,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
     result: function(template, options) {
       var plugin = this,
-        partialName = (options || {}).partial || plugin.templateNameDefault;
+        partialName = (options || {}).partial || plugin.defaultPartialName;
 
       return plugin.get(template.id, partialName);
     },
@@ -313,7 +325,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
       for (k = remain; k--;) {
         url = urls[k];
-        id = req.toUrl(url);
+        id = plugin.makeId(url, req, config);
         ids[url] = id;
 
         if (loaded[id]) {
@@ -349,7 +361,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
 
       if (magicPosition === -1) {
         // assume it as a simple template file
-        data.partials[plugin.templateNameDefault] = content;
+        data.partials[plugin.defaultPartialName] = content;
         return data;
       }
 
@@ -393,7 +405,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         // Only one is allowed
         part = occurs[0].options;
         if (part.path) {
-          alias = part.alias || plugin.superAliasDefault;
+          alias = part.alias || plugin.defaultParentAlias;
           data.extendFrom = alias;
           data.incAliases.push(alias);
           path = plugin.resolveRelativePath(part.path, url, config);
@@ -406,7 +418,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       occurs = findOccurrences(rxMap.template, parts.tpl);
       for (k = occurs.length; k--;) {
         part = occurs[k];
-        alias = part.options.name || plugin.templateNameDefault;
+        alias = part.options.name || plugin.defaultPartialName;
         data.partials[alias] = trim.call(part.content);
 
         if (part.options.wrapper) {
@@ -418,7 +430,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       occurs = findOccurrences(rxMap.wrapper, parts.tpl);
       for (k = occurs.length; k--;) {
         part = occurs[k];
-        alias = part.options.name || plugin.templateNameDefault;
+        alias = part.options.name || plugin.defaultPartialName;
         data.wrappers[alias] = trim.call(part.content);
       }
 
@@ -563,10 +575,10 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
             result = plugin.result(template, {
               partial: name
             });
+
+            dfr.resolve(result);
           } catch (ex) {
             onError(ex);
-          } finally {
-            result && dfr.resolve(result);
           }
         })
         .fail(onError);
@@ -587,7 +599,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
             result = plugin.result(template, resource);
 
             if (plugin.isBuild) {
-              buildMap[name] = result;
+              plugin.cacheForBuild(name, result);
             }
 
             onLoad(result);
@@ -610,13 +622,33 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     },
 
     write: function(pluginName, moduleName, write) {
-      // Ported from requirejs-text
-      if (buildMap.hasOwnProperty(moduleName)) {
-          var content = text.jsEscape(buildMap[moduleName]),
-            def = "define(function () { return '" + content + "';});\n";
+      var plugin = this,
+        content = plugin.extractForBuild(moduleName),
+        def;
+
+      if (content) {
+          def = "define(function () { return '"
+            + plugin.escapeForWrite(content)
+            + "';});\n";
 
           write.asModule(pluginName + "!" + moduleName, def);
       }
+    },
+
+    cacheForBuild: function(name, result) {
+      var plugin = this;
+      plugin.buildMap || (plugin.buildMap = {});
+
+      plugin.buildMap[name] = result;
+    },
+
+    extractForBuild: function(name) {
+      var plugin = this;
+      return plugin.buildMap && plugin.buildMap[name];
+    },
+
+    escapeForWrite: function(content) {
+      return text.jsEscape(content);
     }
   };
 
