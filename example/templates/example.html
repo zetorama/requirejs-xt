@@ -1,0 +1,26 @@
+<x-require path="./template" module="css">
+<x-require path="./partial" alias="helper">
+
+<x-extend path="./base">
+
+<x-template name="header">
+	<h3>Example: Header</h3>
+	<x-include from="helper" name="test">
+</x-template>
+
+<x-template name="content" wrapper="grey-block">
+	<h3>Example: Content</h3>
+  <section>Note, base content is not used</section>
+</x-template>
+
+<x-template name="footer">
+	<h3>Example: Footer</h3>
+	<x-include from="super" name="footer">
+</x-template>
+
+<!-- Wrappers, helpers -->
+<x-wrapper name="grey-block">
+  <div class="grey-box">
+    <x-content>
+  </div>
+</x-wrapper>

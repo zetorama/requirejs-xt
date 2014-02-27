@@ -17,12 +17,13 @@
  *   - https://github.com/zetorama/requirejs-xt
  */
 
-define(['module', 'text', 'deferred'], function (module, text, dfr) {
+define(['require', 'module', 'text', 'deferred'], function (require, module, text, dfr) {
   'use strict';
 
-  var VERSION = '0.2.2',
+  var VERSION = '0.2.3',
     loading = {},
     loaded = {},
+    buildMap = {},
     extend = function(obj, ext) {
       var prop;
       for (prop in ext) {
@@ -95,6 +96,7 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
     version: VERSION,
 
     moduleId: module.id,
+    isBuild: false,
     extension: 'html',
     templateNameDefault: 'main',
     superAliasDefault: 'super',
@@ -577,21 +579,44 @@ define(['module', 'text', 'deferred'], function (module, text, dfr) {
         resource = plugin.parseName(name),
         result;
 
+      plugin.isBuild = config.isBuild;
+
       plugin.fetchFiles([resource.file], req, config)
         .done(function(template) {
           try {
             result = plugin.result(template, resource);
+
+            if (plugin.isBuild) {
+              buildMap[name] = result;
+            }
+
+            onLoad(result);
           } catch (ex) {
             onLoad.error(ex);
-          } finally {
-            result && onLoad(result);
           }
         })
         .fail(onLoad.error);
     },
 
+    normalize: function(name, normalize) {
+      var plugin = this,
+        extLength = plugin.extension.length + 1;
+
+      if (name.indexOf('.'+ plugin.extension) === name.length - extLength) {
+        name = name.substr(0, name.length - 4);
+      }
+
+      return normalize(name);
+    },
+
     write: function(pluginName, moduleName, write) {
-      // TODO
+      // Ported from requirejs-text
+      if (buildMap.hasOwnProperty(moduleName)) {
+          var content = text.jsEscape(buildMap[moduleName]),
+            def = "define(function () { return '" + content + "';});\n";
+
+          write.asModule(pluginName + "!" + moduleName, def);
+      }
     }
   };
 

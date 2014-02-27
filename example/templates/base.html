@@ -1,0 +1,25 @@
+<x-require path="./partial" alias="helper">
+
+<x-template name="main">
+	<div>
+		<x-include name="header" params="test">
+
+		<p>Base: Rendering templates is so fun!</p>
+		<x-include from="helper" name="test">
+
+		<x-include name="content">
+		<x-include name="footer">
+	</div>
+</x-template>
+
+<x-template name="header">
+	<header>Base: Header</header>
+</x-template>
+
+<x-template name="content">
+	<section>Base: Content</section>
+</x-template>
+
+<x-template name="footer">
+	<footer>Base: Footer</footer>
+</x-template>

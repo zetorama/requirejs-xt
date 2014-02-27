@@ -1,6 +1,6 @@
 {
   "name": "requirejs-xt",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "homepage": "https://github.com/zetorama/requirejs-xt",
   "description": "RequireJS X-Template Loader",
   "authors": [
@@ -15,6 +15,7 @@
   ],
   "ignore": [
     "**/.*",
+    "example",
     "node_modules",
     "bower_components",
     "test"
