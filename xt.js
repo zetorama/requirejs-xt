@@ -2,6 +2,8 @@
  * RequireJS X-Template Loader
  * Where X stands for Any
  *
+ * This is a Base Class. You most likely need some extension over it
+ *
  * Implements:
  *   - multiple templates/partials per file
  *   - templates extend
@@ -117,8 +119,18 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
       return plugin.getContent(options.template, options.name, options.context);
     },
 
-    compile: function(text, name, template) {
-      return text;
+    compile: function(content, name, template) {
+      // For example make it a simple function
+      var plugin = this,
+        compiled = function() {
+          return content;
+        };
+
+      if (plugin.isBuild) {
+        compiled.source = "function() { return '" + text.jsEscape(content) + "'; }";
+      }
+
+      return compiled;
     },
 
     get: function(id, partialName) {
@@ -626,10 +638,12 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
         content = plugin.extractForBuild(moduleName),
         def;
 
+      console.info('XT-WRITE:', pluginName, plugin.moduleId);
+
       if (content) {
-          def = "define(function () { return '"
+          def = "define(function() { return "
             + plugin.escapeForWrite(content)
-            + "';});\n";
+            + ";});\n";
 
           write.asModule(pluginName + "!" + moduleName, def);
       }
@@ -648,7 +662,7 @@ define(['require', 'module', 'text', 'deferred'], function (require, module, tex
     },
 
     escapeForWrite: function(content) {
-      return text.jsEscape(content);
+      return content.source;
     }
   };
 

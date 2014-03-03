@@ -5,7 +5,7 @@ define(['xt!templates/example'], function(template) {
     template: template,
 
 		render: function(el) {
-			el.innerHTML = this.template;
+			el.innerHTML = this.template();
 		}
 	};
 });

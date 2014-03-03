@@ -1,11 +1,15 @@
 'use strict';
 
 requirejs.config({
-  baseUrl: 'js',
+  baseUrl: './js',
 	paths: {
-		'xt': '../../xt',
     'templates': '../templates'
-	}
+	},
+  map: {
+    '*': {
+      'xt': '../../engines/xt-underscore'
+    }
+  }
 });
 
 

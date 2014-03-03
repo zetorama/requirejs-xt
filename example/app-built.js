@@ -1,12 +1,20 @@
 define('text',{});
 define('deferred',{});
-define('xt',{load: function(id){throw new Error("Dynamic load not allowed: " + id);}});
+define('../../engines/../xt',{});
+define('underscore',{});
+define('../../engines/xt-underscore',{load: function(id){throw new Error("Dynamic load not allowed: " + id);}});
 define('normalize',{});
 define('css',{load: function(id){throw new Error("Dynamic load not allowed: " + id);}});
 
 define('css!templates/template',[],function(){});
 
-define('xt!templates/example',[],function () { return '<div>\n\t\t<h3>Example: Header</h3>\n\t<small>Partial: Test</small>\n\n\t\t<p>Base: Rendering templates is so fun!</p>\n\t\t<small>Partial: Test</small>\n\n\t\t<div class="grey-box">\n    <h3>Example: Content</h3>\n  <section>Note, base content is not used</section>\n  </div>\n\t\t<h3>Example: Footer</h3>\n\t<footer>Base: Footer</footer>\n\t</div>';});
+define('../../engines/xt-underscore!templates/example',[],function() { return function(obj){
+var __t,__p='',__j=Array.prototype.join,print=function(){__p+=__j.call(arguments,'');};
+with(obj||{}){
+__p+='<div>\n\t\t<h3>Example: Header</h3>\n\t<small>Partial: Test</small>\n\n\t\t<p>Base: Rendering templates is so fun!</p>\n\t\t<small>Partial: Test</small>\n\n\t\t<div class="grey-box">\n    <h3>Example: Content</h3>\n  <section>Note, base content is not used</section>\n  </div>\n\t\t<h3>Example: Footer</h3>\n\t<footer>Base: Footer</footer>\n\t</div>';
+}
+return __p;
+};});
 
 define('app',['xt!templates/example'], function(template) {
 	
@@ -15,7 +23,7 @@ define('app',['xt!templates/example'], function(template) {
     template: template,
 
 		render: function(el) {
-			el.innerHTML = this.template;
+			el.innerHTML = this.template();
 		}
 	};
 });

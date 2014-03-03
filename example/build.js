@@ -5,7 +5,17 @@
     removeCombined: true,
     findNestedDependencies: true,
     optimize: 'none',
-    stubModules: ['text', 'xt', 'deferred', 'css', 'normalize', 'css-builder'],
+    stubModules: [
+      '../../engines/../xt',
+      '../../engines/xt-underscore',
+
+      'underscore',
+      'text',
+      'deferred',
+      'css',
+      'normalize',
+      'css-builder'
+    ],
 
     name: 'app',
     out: 'app-built.js'
